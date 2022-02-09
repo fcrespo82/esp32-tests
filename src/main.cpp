@@ -1,54 +1,24 @@
-#include <NTPClient.h>   /* https://github.com/arduino-libraries/NTPClient */
 #include <WiFi.h>        /* Biblioteca do WiFi. */
 #include "SSD1306Wire.h" // legacy include: `#include "SSD1306.h"`
 
-#include "images.h"
+#include "mywifi.h"
+#include "FCntp.h"
 
-/*-------- Configurações de Wi-fi----------- */
-const char *ssid = "HouseCrespo";      // iPhone de Fernando"; /* Substitua pelo nome da rede */
-const char *password = "Maia11Joao14"; /* Substitua pela senha */
-/* -------- Configurações de relógio on-line----------- */
-WiFiUDP udp;
-NTPClient timeClient(udp, "a.st1.ntp.br", -3 * 3600); /* Cria um objeto "NTP" com as configurações.utilizada no Brasil */
-String hora;                                          /* Variável que armazena */
-SSD1306Wire display(0x3c, 5, 4);                      // ADDRESS, SDA, SCL  -  SDA and SCL usually populate automatically based on your board's pins_arduino.h e.g. https://github.com/esp8266/Arduino/blob/master/variants/nodemcu/pins_arduino.h
-
+String hora;                     /* Variável que armazena */
+SSD1306Wire display(0x3c, 5, 4); // ADDRESS, SDA, SCL  -  SDA and SCL usually populate automatically based on your board's pins_arduino.h e.g. https://github.com/esp8266/Arduino/blob/master/variants/nodemcu/pins_arduino.h
 WiFiServer server(80);
 
-int percent = 0;
+unsigned long lastMillis = 0;
+
 void setup()
 {
   Serial.begin(115200);
-
   display.init();
 
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    display.clear();
-    display.setFont(ArialMT_Plain_10);
-    display.drawStringMaxWidth(0, 0, 127, "Conectando ao Wifi... " + String(ssid));
-    display.drawProgressBar(0, 63 / 2, 127, 10, (percent++ % 101));
-    display.display();
-    delay(10);
-  }
-  display.clear();
-  display.drawStringMaxWidth(0, 0, 127, "Conectado ao Wi-Fi " + WiFi.localIP().toString());
-  display.display();
-  delay(200);
+  connectToWiFi(&display);
 
-  timeClient.begin();       /* Inicia o protocolo */
-  timeClient.forceUpdate(); /* Atualização */
+  getTimeFromNTP(&display);
 
-  while (!timeClient.isTimeSet())
-  {
-    display.clear();
-    display.setFont(ArialMT_Plain_10);
-    display.drawStringMaxWidth(0, 0, 127, "Lendo dados do servidor NTP");
-    display.drawProgressBar(0, 63 / 2, 127, 10, (percent++ % 101));
-    display.display();
-    delay(10);
-  }
   server.begin(); // start the web server on port 80
 }
 
@@ -117,17 +87,29 @@ void wificlient()
   }
 }
 
+int ntp_times = 0;
 void loop()
 {
   wificlient();
   /* Armazena na variável hora, o horário atual. */
-  hora = timeClient.getFormattedTime();
+  hora = getFormattedTime();
+
   display.clear();
+  display.setFont(ArialMT_Plain_24);
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
+  display.drawString(127 / 2, 0, hora);
   display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 0, "Hora: " + hora);
-  display.drawString(0, 10, "IP: " + WiFi.localIP().toString());
-  display.drawString(0, 20, "Hostname: " + String(WiFi.getHostname()));
+
+  display.setLogBuffer(3, 30);
+  display.println("IP: " + WiFi.localIP().toString());
+  display.println("Hostname: " + String(WiFi.getHostname()));
+  bool ntp_ok = updateNTP();
+  display.println("NTP OK: " + String(ntp_times));
+  display.drawLogBuffer(0, 24);
   display.display(); /* Exibe o display. */
-  timeClient.update();
-  delay(100);
+  if (ntp_ok)
+  {
+    ntp_times += 1;
+  }
+
 }
